@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Tag experiments · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Tag experiments</h1>
+<p class="sub">Every tag change starts a new experiment. Old ones are kept so conversions stay attached to the tags that were live at the time.</p>
+
+<div class="panel">
+  <table>
+    <thead><tr><th>Server</th><th>Tags</th><th>Started</th><th>Ended</th><th class="num">Conversions</th></tr></thead>
+    <tbody>
+    {% for exp in experiments %}
+      <tr>
+        <td><a href="/feeders/{{ exp.feeder_guild_id }}">{{ names.get(exp.feeder_guild_id, exp.feeder_guild_id) }}</a></td>
+        <td>{% for tag in exp.tags %}<span class="tag">{{ tag }}</span>{% else %}<span class="muted">none</span>{% endfor %}
+            {% if exp.note %}<br><span class="muted" style="font-size:12px">{{ exp.note }}</span>{% endif %}</td>
+        <td class="muted">{{ exp.started_at|dt }}</td>
+        <td class="muted">{{ exp.ended_at|dt if exp.ended_at else 'active' }}</td>
+        <td class="num">{{ per_experiment.get(exp.id, 0) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No experiments yet. Add tags on a feeder page.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

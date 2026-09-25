@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Customize · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Customize your workspace</h1>
+<p class="muted">Appearance applies across the dashboard. Bot messages and scheduler behavior have their own controls.</p>
+<form class="card" id="appearance-form">
+<label>Dashboard name<input name="dashboard_title" value="{{ settings.dashboard_title }}" maxlength="60" required></label>
+<label>Accent color<input name="dashboard_accent" type="color" value="{{ settings.dashboard_accent }}"></label>
+<label>Theme<select name="dashboard_theme"><option value="dark" {{ 'selected' if settings.dashboard_theme == 'dark' }}>Dark</option><option value="light" {{ 'selected' if settings.dashboard_theme == 'light' }}>Light</option></select></label>
+<label class="check"><input name="dashboard_compact" type="checkbox" {{ 'checked' if settings.dashboard_compact }}> Compact spacing</label>
+<button type="submit">Save appearance</button><p id="appearance-result" role="alert"></p>
+</form>
+<div class="suite-grid">
+<a class="card" href="/settings"><h3>Network settings</h3><p>Name, main server, default channels, DM delays, deduplication, staff roles and repair timing.</p></a>
+<a class="card" href="/feeders"><h3>Per-server settings</h3><p>Channel names, messaging mode, tags, role rules and overrides.</p></a>
+<a class="card" href="/messages"><h3>Message studio</h3><p>Text, colors, buttons, custom variables, drafts, previews and publishing.</p></a>
+<a class="card" href="/scheduler"><h3>Scheduler</h3><p>Account and server timing, messages, credentials, retries, simulation and startup.</p></a>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/customize.js"></script>{% endblock %}

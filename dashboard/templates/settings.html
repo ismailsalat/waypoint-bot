@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<p class="sub">Everything here is stored in the database and takes effect without restarting the bot.</p>
+
+<form method="post" action="/settings">
+
+<h2>Network settings</h2>
+<div class="cols">
+  <div class="panel">
+    <label>Network name</label>
+    <input name="network_name" value="{{ settings.network_name }}">
+
+    <label>Main server</label>
+    <select name="main_guild_id">
+      <option value="">Not set</option>
+      {% for server in servers %}
+      <option value="{{ server.guild_id }}" {{ 'selected' if settings.main_guild_id and settings.main_guild_id|int == server.guild_id }}>{{ server.name }}</option>
+      {% endfor %}
+    </select>
+    <p class="muted" style="font-size:12.5px;margin-top:6px">
+      The servers the bot is currently in. Changing this keeps all past conversions and analytics; feeders are queued for a check and get new tracking invites to the new destination.
+    </p>
+
+    <label>Custom variables <span class="muted">(one per line: name = value)</span></label>
+    <textarea name="custom_variables" style="min-height:90px" placeholder="community_type = Gaming&#10;region = NA">{{ custom_variables_text }}</textarea>
+    <p class="muted" style="font-size:12.5px;margin-top:6px">Usable in Message Studio as <code>{community_type}</code>. Lower-case letters, digits and underscores; built-in variable names are reserved.</p>
+
+    <label>Test DM user ID</label>
+    <input name="admin_test_user_id" value="{{ admin_test_user_id or '' }}" placeholder="123456789012345678" inputmode="numeric">
+    <p class="muted" style="font-size:12.5px;margin-top:6px">
+      The only account that can receive test messages from the Message studio. Numbers only.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h3>Development mode</h3>
+    <label class="inline" style="margin-top:4px">
+      <input type="checkbox" name="development_mode" {{ 'checked' if development_mode }}>
+      <span>Development mode on</span>
+    </label>
+    {% if development_mode %}
+    <div class="banner" style="margin-top:12px">
+      ⚠ Development mode active. Production funnel DMs are suppressed and nothing recorded now counts in production analytics.
+    </div>
+    {% else %}
+    <p class="muted" style="font-size:13px;margin-top:10px">
+      Off. Real members receive funnel DMs and everything counts normally.
+    </p>
+    {% endif %}
+    <p class="muted" style="font-size:12.5px">
+      While it is on, new joins, DMs and conversions are flagged as tests and left out of every figure on the Analytics page. A conversion still takes its status from the funnel behind it, so switching this off does not turn an earlier test run into production data.
+    </p>
+  </div>
+</div>
+
+<h2>Feeder defaults</h2>
+<div class="cols">
+  <div class="panel">
+    <div class="row">
+      <div><label>Public funnel channel</label><input name="default_funnel_channel_name" value="{{ settings.default_funnel_channel_name }}"></div>
+      <div><label>Private bump channel</label><input name="default_bump_channel_name" value="{{ settings.default_bump_channel_name }}"></div>
+    </div>
+    <div class="row">
+      <div><label>DM delay (seconds)</label><input name="default_dm_delay_seconds" value="{{ settings.default_dm_delay_seconds }}"></div>
+      <div>
+        <label>Funnel mode</label>
+        <select name="default_funnel_mode">
+          {% for mode in constants.FUNNEL_MODES %}<option value="{{ mode }}" {{ 'selected' if settings.default_funnel_mode == mode }}>{{ mode }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Repair check interval (minutes)</label><input name="repair_interval_minutes" value="{{ settings.repair_interval_minutes }}"></div>
+      <div><label>Staff roles that can see the bump channel</label><input name="bump_staff_role_names" value="{{ settings.bump_staff_role_names|join(', ') }}"></div>
+    </div>
+    <label class="inline" style="margin-top:14px"><input type="checkbox" name="default_auto_repair" {{ 'checked' if settings.default_auto_repair }}><span>Auto repair on by default</span></label>
+    <label class="inline"><input type="checkbox" name="default_age_enforcement" {{ 'checked' if settings.default_age_enforcement }}><span>Age enforcement on by default</span></label>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">Any feeder can override these on its own page.</p>
+  </div>
+
+  <div class="panel">
+    <h3>DM deduplication</h3>
+    <label>How often one person may be DMed</label>
+    <select name="dm_policy">
+      <option value="ONCE_PER_FEEDER" {{ 'selected' if settings.dm_policy == 'ONCE_PER_FEEDER' }}>Once per feeder</option>
+      <option value="ONCE_GLOBAL" {{ 'selected' if settings.dm_policy == 'ONCE_GLOBAL' }}>Once anywhere in the network</option>
+      <option value="COOLDOWN_DAYS" {{ 'selected' if settings.dm_policy == 'COOLDOWN_DAYS' }}>Not again for a number of days</option>
+    </select>
+    <div class="row">
+      <div><label>Cooldown days</label><input name="dm_cooldown_days" value="{{ settings.dm_cooldown_days }}"></div>
+      <div><label>Wait this long after a failed DM (days)</label><input name="failure_retry_days" value="{{ settings.failure_retry_days }}"></div>
+    </div>
+  </div>
+</div>
+
+<div class="actions"><button class="primary" type="submit">Save settings</button></div>
+</form>
+
+<h2>System</h2>
+<div class="cols">
+  <div class="panel">
+    <h3>Environment</h3>
+    <table>
+      <tr><td>Environment</td><td>{{ database.environment }}</td></tr>
+      <tr><td>Database</td><td>{{ database.kind }}</td></tr>
+      {% if database.file %}<tr><td>Database file</td><td class="mono">{{ database.file }}</td></tr>{% endif %}
+      <tr><td>Status</td><td>{% if database.connected %}<span class="pill pill-ok">connected</span>{% else %}<span class="pill pill-bad">not connected</span>{% endif %}</td></tr>
+      <tr><td>Production database</td><td>{% if database.is_production %}<span class="pill pill-bad">yes</span>{% else %}No{% endif %}</td></tr>
+    </table>
+    <p class="muted" style="font-size:12.5px;margin-top:8px">
+      Local SQLite and the Railway PostgreSQL database are separate and are never synced. You are seeing production data only because a PostgreSQL <code>DATABASE_URL</code> is set in this machine's <code>.env</code>.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h3>From your .env</h3>
+    <p class="muted" style="font-size:13px">Not editable here, and never displayed.</p>
+    <table>
+      <tr><td>Discord bot token</td><td>{% if token_configured %}<span class="pill pill-ok">configured</span>{% else %}<span class="pill pill-bad">missing</span>{% endif %}</td></tr>
+      <tr><td>Database URL</td><td>{% if database.explicitly_configured %}<span class="pill pill-ok">configured</span>{% else %}<span class="pill pill-off">not set, using local SQLite</span>{% endif %}</td></tr>
+      <tr><td>Approved owners</td><td>{% if owners_configured %}<span class="pill pill-ok">configured</span> <span class="muted">{{ owner_count }} account{{ '' if owner_count == 1 else 's' }}</span>{% else %}<span class="pill pill-bad">none set</span>{% endif %}</td></tr>
+    </table>
+  </div>
+</div>
+{% endblock %}

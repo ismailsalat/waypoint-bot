@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ server.name }} · {{ settings.dashboard_title }}{% endblock %}
+
+{% block scripts %}
+<script>
+function copyInvite() {
+  const el = document.getElementById("invite-url");
+  if (el) navigator.clipboard.writeText(el.textContent.trim());
+}
+</script>
+{% endblock %}
+{% block content %}
+{% set is_feeder = server.server_type == 'FEEDER' %}
+<h1>{{ server.name }}</h1>
+<p class="sub">
+  <span class="pill {{ 'pill-feeder' if is_feeder else 'pill-main' }}">{{ server.server_type }}</span>
+  {% if is_feeder %}
+  Destinations: {{ destinations|map(attribute='name')|join(', ') or 'not set' }}
+  <span class="muted">({{ 'inherited default' if server.destination_guild_ids is none else 'selected for this feeder' }})</span> ·
+  {% endif %}
+  <span class="mono">{{ server.guild_id }}</span>
+</p>
+
+{% if is_feeder %}
+<div class="panel">
+  <h3>Where should this feeder send people?</h3>
+  <form method="post" action="/feeders/{{ server.guild_id }}/destinations">
+    <label>Destination choice</label>
+    <select name="destination_mode">
+      <option value="default" {{ 'selected' if server.destination_guild_ids is none }}>Use the default main server</option>
+      <option value="selected" {{ 'selected' if server.destination_guild_ids is not none }}>Use the main servers checked below</option>
+    </select>
+    <div class="suite-grid" style="margin-top:12px">
+    {% for option in destination_options %}
+      <label class="destination-check"><input type="checkbox" name="destination_guild_ids" onchange="this.form.elements.destination_mode.value='selected'" value="{{ option.guild_id }}" {{ 'checked' if option.guild_id in selected_destinations }}> {{ option.name }}{% if not option.bot_present %} (bot missing){% endif %}</label>
+    {% else %}<p>Add the bot to your main servers, then mark them on the <a href="/servers">Servers page</a>.</p>{% endfor %}
+    </div>
+    <p class="muted">Choose one or several. Each gets its own welcome button and tracking invite. A new member receives one DM with buttons for the selected communities they have not joined.</p>
+    <button type="submit" class="primary">Save destinations</button>
+  </form>
+</div>
+{% endif %}
+<div class="cols">
+  <div class="panel">
+    <h3>Settings</h3>
+    <form method="post" action="/feeders/{{ server.guild_id }}/settings">
+      {% if is_feeder %}
+      <label>Public funnel channel <span class="muted">(blank uses the network default: {{ settings.default_funnel_channel_name }})</span></label>
+      <input name="funnel_channel_name" value="{{ server.funnel_channel_name or '' }}" placeholder="{{ settings.default_funnel_channel_name }}">
+
+      <label>Private bump channel <span class="muted">(blank uses {{ settings.default_bump_channel_name }})</span></label>
+      <input name="bump_channel_name" value="{{ server.bump_channel_name or '' }}" placeholder="{{ settings.default_bump_channel_name }}">
+
+      <div class="row">
+        <div>
+          <label>DM delay in seconds <span class="muted">(blank = default {{ settings.default_dm_delay_seconds }})</span></label>
+          <input name="dm_delay_seconds" value="{{ server.dm_delay_seconds if server.dm_delay_seconds is not none else '' }}" placeholder="{{ settings.default_dm_delay_seconds }}">
+        </div>
+        <div>
+          <label>Funnel mode</label>
+          <select name="funnel_mode">
+            <option value="">Use global default ({{ settings.default_funnel_mode }})</option>
+            {% for mode in constants.FUNNEL_MODES %}
+            <option value="{{ mode }}" {{ 'selected' if server.funnel_mode == mode }}>{{ mode }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      {% endif %}
+
+      <div class="row">
+        {% if is_feeder %}
+        <div>
+          <label>Auto repair</label>
+          <select name="auto_repair">
+            <option value="" {{ 'selected' if server.auto_repair is none }}>Use global default</option>
+            <option value="true" {{ 'selected' if server.auto_repair == true }}>On</option>
+            <option value="false" {{ 'selected' if server.auto_repair == false }}>Off</option>
+          </select>
+        </div>
+        {% endif %}
+        <div>
+          <label>Age enforcement</label>
+          <select name="age_enforcement">
+            <option value="" {{ 'selected' if server.age_enforcement is none }}>Use global default</option>
+            <option value="true" {{ 'selected' if server.age_enforcement == true }}>On</option>
+            <option value="false" {{ 'selected' if server.age_enforcement == false }}>Off</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" type="submit">Save settings</button>
+      </div>
+    </form>
+
+    <h3 style="margin-top:26px">In use right now</h3>
+    <table>
+      {% if is_feeder %}
+      <tr><td>Funnel channel</td><td>#{{ effective.funnel_channel_name }}</td></tr>
+      <tr><td>Bump channel</td><td>#{{ effective.bump_channel_name }}</td></tr>
+      <tr><td>DM delay</td><td>{{ effective.dm_delay_seconds }}s</td></tr>
+      <tr><td>Funnel mode</td><td>{{ effective.funnel_mode }}</td></tr>
+      <tr><td>Auto repair</td><td>{{ 'on' if effective.auto_repair else 'off' }}</td></tr>
+      <tr><td>Destination</td><td>{{ destinations|map(attribute='name')|join(', ') or 'not set' }}</td></tr>
+      {% endif %}
+      <tr><td>Age enforcement</td><td>{{ 'on' if effective.age_enforcement else 'off' }}</td></tr>
+    </table>
+  </div>
+
+  <div>
+    {% if is_feeder %}
+    <div class="panel">
+      <h3>Tracking invites</h3>
+      <table><thead><tr><th>Main server</th><th>Invite</th><th>Uses</th></tr></thead><tbody>
+      {% for destination in destinations %}<tr>
+        <td>{{ destination.name }}</td>
+        <td>{% if destination.invite %}<a href="{{ destination.invite_url }}" target="_blank" rel="noopener">{{ destination.invite_url }}</a>{% else %}Waiting for setup{% endif %}</td>
+        <td>{{ destination.invite.uses if destination.invite else 0 }}</td>
+      </tr>{% else %}<tr><td colspan="3">No main destination selected.</td></tr>{% endfor %}
+      </tbody></table>
+      <div class="actions">
+        <form method="post" action="/feeders/{{ server.guild_id }}/rotate-invite" class="inline-form"><button>Rotate all invites</button></form>
+        <form method="post" action="/feeders/{{ server.guild_id }}/repair" class="inline-form"><button>Repair invites</button></form>
+        <form method="post" action="/feeders/{{ server.guild_id }}/repost" class="inline-form"><button>Repost funnel message</button></form>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-top:10px">
+        Tracking invites never expire and have unlimited uses, which is what keeps long-term attribution working. Rotating creates a new invite and retires the old one; conversions already credited to the old code keep their history.
+      </p>
+      <div class="actions">
+        <a class="btn" href="/messages?kind=DM&guild_id={{ server.guild_id }}">Override the DM</a>
+      </div>
+      {% if overrides %}<p class="muted" style="font-size:13px;margin-top:12px">This feeder has {{ overrides|length }} custom DM version(s).</p>{% endif %}
+    </div>
+
+    <div class="panel" id="fresh">
+      <h3 class="danger">Fresh Setup</h3>
+      <p class="muted" style="font-size:13px">
+        Deletes <strong>every channel and category</strong> in {{ server.name }} and rebuilds Waypoint's feeder layout. Roles, members, emojis and server settings are left alone. Disabled on the main server.
+      </p>
+      <form method="post" action="/feeders/{{ server.guild_id }}/fresh" onsubmit="return confirm('Delete every channel in this feeder and rebuild its layout?')">
+        <label>Type FRESH to confirm</label>
+        <input name="confirm" placeholder="FRESH" autocomplete="off">
+        <div class="actions"><button class="danger" type="submit">Run Fresh Setup</button></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h3>DISBOARD tags</h3>
+      <form method="post" action="/feeders/{{ server.guild_id }}/tags">
+        <label>Current tags, comma separated</label>
+        <input name="tags" value="{{ tags }}" placeholder="movies, chat, fandom">
+        <label>Note <span class="muted">(optional)</span></label>
+        <input name="note" placeholder="why you changed them">
+        <div class="actions"><button class="primary" type="submit">Start a new experiment</button></div>
+      </form>
+      <p class="muted" style="font-size:12.5px;margin-top:10px">Saving closes the current experiment and starts a new one. Old tags and the conversions recorded against them are kept.</p>
+
+      {% if experiments %}
+      <table style="margin-top:12px">
+        <thead><tr><th>Tags</th><th>From</th><th>To</th></tr></thead>
+        <tbody>
+        {% for exp in experiments %}
+          <tr>
+            <td>{% for tag in exp.tags %}<span class="tag">{{ tag }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
+            <td class="muted">{{ exp.started_at|dt }}</td>
+            <td class="muted">{{ exp.ended_at|dt if exp.ended_at else 'active' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+
+    {% endif %}
+
+    <div class="panel">
+      <h3>Role rules</h3>
+      <p class="muted" style="font-size:12.5px">Runs only when age enforcement is on for this server, which you set on the left. Self-attestation only; no birth dates are collected.</p>
+      <table>
+        <tbody>
+        {% for rule in rules %}
+          <tr>
+            <td>{{ rule.role_name or rule.role_id }} → {{ rule.action|lower|replace('_',' ') }}</td>
+            <td class="num">
+              <form method="post" action="/rules/{{ rule.id }}/delete" class="inline-form">
+                <input type="hidden" name="guild_id" value="{{ server.guild_id }}">
+                <button class="danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td class="empty">No rules yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <form method="post" action="/feeders/{{ server.guild_id }}/rules">
+        <div class="row">
+          <div><label>Role ID</label><input name="role_id" placeholder="123456789012345678"></div>
+          <div><label>Label</label><input name="role_name" placeholder="Under 18"></div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Action</label>
+            <select name="action">
+              {% for action in constants.ROLE_ACTIONS %}<option value="{{ action }}">{{ action|lower|replace('_',' ') }}</option>{% endfor %}
+            </select>
+          </div>
+          <div><label>Target role ID <span class="muted">(for add/remove)</span></label><input name="target_role_id"></div>
+        </div>
+        <div class="actions"><button type="submit">Add rule</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Overview · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>{{ network_name }}</h1>
+<p class="sub">Feeder servers pointing at {{ main_server.name if main_server else 'no main server yet' }}.</p>
+
+<div class="stats">
+  <div class="stat"><b>{{ summary.feeders }}</b><span>Feeders</span></div>
+  <div class="stat"><b>{{ summary.feeder_joins }}</b><span>Feeder joins</span></div>
+  <div class="stat"><b>{{ summary.conversions }}</b><span>Attributed conversions</span></div>
+  <div class="stat accent"><b>{{ summary.rate }}%</b><span>Conversion rate</span></div>
+  <div class="stat"><b>{{ summary.unattributed }}</b><span>Unattributed main joins</span></div>
+</div>
+
+<div class="actions" style="margin-bottom:18px">
+  <form method="post" action="/health/repair-all" class="inline-form"><button>Repair all feeders</button></form>
+  <a class="btn" href="/health">Open Health</a>
+  <a class="btn" href="/messages">Message studio</a>
+</div>
+
+<h2>Feeder performance</h2>
+<div class="panel">
+  {% if summary.rows %}
+  <table>
+    <thead><tr><th>Server</th><th class="num">Joins</th><th class="num">DMs sent</th><th class="num">Main joins</th><th class="num">Conversion</th><th></th></tr></thead>
+    <tbody>
+    {% for row in summary.rows %}
+      <tr>
+        <td>{{ row.name }}{% if not row.bot_present %} <span class="pill pill-bad">bot removed</span>{% endif %}</td>
+        <td class="num">{{ row.joins }}</td>
+        <td class="num">{{ row.dms }}</td>
+        <td class="num">{{ row.conversions }}</td>
+        <td class="num">{{ row.rate }}%</td>
+        <td class="num"><a class="btn" href="/feeders/{{ row.guild_id }}">Configure</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No feeders yet. Invite the bot to a server you own and it will configure itself, or mark an existing server as a feeder on the Servers page.</p>
+  {% endif %}
+</div>
+
+<div class="cols">
+  <div>
+    <h2>Latest conversions</h2>
+    <div class="panel">
+      {% if conversions %}
+      <table>
+        <thead><tr><th>Member</th><th>Source</th><th>Attribution</th></tr></thead>
+        <tbody>
+        {% for c in conversions %}
+          <tr>
+            <td>{{ c.user_name or c.user_id }}{% if c.is_test %} <span class="pill pill-off">test</span>{% endif %}</td>
+            <td>{{ names.get(c.source_guild_id, '—') }}</td>
+            <td><span class="pill {{ 'pill-ok' if c.attribution == 'INVITE' else 'pill-off' }}">{{ c.attribution|lower }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">Nobody has joined the main server through a tracking invite yet.</p>{% endif %}
+    </div>
+  </div>
+  <div>
+    <h2>Recent activity</h2>
+    <div class="panel log">
+      {% if logs %}
+      <ul>
+        {% for entry in logs %}
+        <li><time>{{ entry.created_at|dt }}</time>{{ entry.detail or entry.action }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="empty">Nothing has happened yet.</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+# Runtime
+discord.py==2.7.1
+SQLAlchemy[asyncio]==2.0.54
+asyncpg==0.31.0
+aiosqlite==0.22.1
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+jinja2==3.1.6
+python-dotenv==1.2.2
+python-multipart==0.0.32
+
+# Tests
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
+
+# Optional OS credential persistence for scheduler accounts
+keyring==25.2.1

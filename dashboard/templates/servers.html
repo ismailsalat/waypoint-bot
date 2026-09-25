@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Servers · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Servers</h1>
+<p class="sub">Mark Parley and your other communities as main servers, then configure each feeder’s destinations. Changing a server to Feeder queues channel setup; existing channels are deleted only by Fresh Setup.</p>
+
+<div class="panel">
+  <table>
+    <thead><tr><th>Server</th><th>Guild ID</th><th>Type</th><th>Destination</th><th>Bot</th><th></th></tr></thead>
+    <tbody>
+    {% for server in servers %}
+      <tr>
+        <td>{{ server.name }}</td>
+        <td class="mono">{{ server.guild_id }}</td>
+        <td>
+          <form method="post" action="/servers/{{ server.guild_id }}/type" class="inline">
+            <select name="server_type" onchange="this.form.submit()">
+              {% for option in constants.SERVER_TYPES %}
+              <option value="{{ option }}" {{ 'selected' if server.server_type == option }}>{{ constants.SERVER_TYPE_LABELS.get(option, option) }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{% if server.server_type == 'FEEDER' %}{{ destination_names.get(server.guild_id, '—') }} <span class="muted">({{ 'default' if server.destination_guild_ids is none else 'selected' }})</span>{% else %}—{% endif %}</td>
+        <td>{% if server.bot_present %}<span class="pill pill-ok">in server</span>{% else %}<span class="pill pill-bad">removed</span>{% endif %}</td>
+        <td class="num">{% if server.server_type != 'DISABLED' %}<a class="btn" href="/servers/{{ server.guild_id }}/configure">Configure</a>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">The bot is not in any server yet. Invite it with the link in the README.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

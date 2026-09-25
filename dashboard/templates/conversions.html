@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Conversions · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Conversions</h1>
+<p class="sub">Everyone who joined the main server, and where the tracking invite says they came from. Rows marked <span class="pill pill-off">test</span> happened while development mode was on and are left out of every analytics figure.</p>
+
+<div class="panel">
+  <table>
+    <thead><tr><th>Member</th><th>Source feeder</th><th>Invite</th><th>Tags at the time</th><th>Message</th><th>Joined main</th><th>Attribution</th></tr></thead>
+    <tbody>
+    {% for c in conversions %}
+      {% set exp = experiments.get(c.tag_experiment_id) %}
+      {% set version = versions.get(c.message_version_id) %}
+      <tr>
+        <td>{{ c.user_name or c.user_id }}{% if c.is_test %} <span class="pill pill-off">test</span>{% endif %}</td>
+        <td>{{ names.get(c.source_guild_id, '—') }}</td>
+        <td class="mono">{{ c.invite_code or '—' }}</td>
+        <td>{% if exp %}{% for tag in exp.tags %}<span class="tag">{{ tag }}</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ ('v' ~ version.version) if version else '—' }}</td>
+        <td class="muted">{{ c.main_join_at|dt }}</td>
+        <td><span class="pill {{ 'pill-ok' if c.attribution == 'INVITE' else 'pill-off' }}">{{ c.attribution|lower }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No main-server joins recorded yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

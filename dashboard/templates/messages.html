@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Message studio · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Message studio</h1>
+<p class="sub">Edit, preview and test a message, then publish it. Nothing reaches members until you press publish.</p>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="row">
+    <div>
+      <label>Message</label>
+      <select onchange="location = '/messages?kind=' + this.value + '{{ '&guild_id=' ~ guild_id if guild_id else '' }}'">
+        <option value="DM" {{ 'selected' if kind == 'DM' }}>Funnel DM</option>
+        <option value="PUBLIC" {{ 'selected' if kind == 'PUBLIC' }}>Public channel post</option>
+      </select>
+    </div>
+    <div>
+      <label>Applies to</label>
+      <select onchange="location = '/messages?kind={{ kind }}' + (this.value ? '&guild_id=' + this.value : '')">
+        <option value="">Every feeder (global default)</option>
+        {% for feeder in feeders %}
+        <option value="{{ feeder.guild_id }}" {{ 'selected' if guild_id == feeder.guild_id }}>{{ feeder.name }} only</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Preview as a join in</label>
+      <select id="preview-guild" name="preview_guild_id" form="editor">
+        {% for feeder in feeders %}
+        <option value="{{ feeder.guild_id }}" {{ 'selected' if preview_feeder and preview_feeder.guild_id == feeder.guild_id }}>{{ feeder.name }}</option>
+        {% else %}
+        <option value="">No feeders yet</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="panel">
+    <h3>{{ 'Editing version ' ~ current.version ~ ' (' ~ current.status|lower ~ ')' if current else 'New message' }}</h3>
+    <form method="post" action="/messages/draft" id="editor">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="guild_id" value="{{ guild_id or '' }}">
+
+      <label>Message text</label>
+      <textarea name="body" id="body">{{ content.body }}</textarea>
+      <div class="varlist">
+        {% for variable in variables %}<code data-insert="{{ '{' ~ variable ~ '}' }}">{{ '{' ~ variable ~ '}' }}</code>{% endfor %}
+        {% for name in custom_variables %}<code data-insert="{{ '{' ~ name ~ '}' }}">{{ '{' ~ name ~ '}' }}</code>{% endfor %}
+      </div>
+
+      <div class="row">
+        <div><label>Button text</label><input name="button_label" id="button_label" value="{{ content.button_label }}"></div>
+        <div><label>Button emoji <span class="muted">(optional)</span></label><input name="button_emoji" id="button_emoji" value="{{ content.button_emoji }}"></div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Button type</label>
+          <select name="button_mode" id="button_mode">
+            <option value="LINK" {{ 'selected' if content.button_mode != 'INTERACTIVE' }}>Direct link button</option>
+            <option value="INTERACTIVE" {{ 'selected' if content.button_mode == 'INTERACTIVE' }}>Interactive coloured button</option>
+          </select>
+        </div>
+        <div>
+          <label>Button colour <span class="muted">(interactive only)</span></label>
+          <select name="button_style" id="button_style">
+            {% for style in button_styles %}
+            <option value="{{ style }}" {{ 'selected' if content.button_style == style }}>{{ style|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-top:6px">
+        Discord only allows custom button styles on interactive buttons. Direct URL buttons use Discord's fixed Link style. An interactive button asks the bot for the invite, which it sends privately — attribution is identical either way.
+      </p>
+
+      <label class="inline" style="margin-top:14px">
+        <input type="checkbox" name="use_embed" id="use_embed" {{ 'checked' if content.use_embed }}>
+        <span>Send as an embed</span>
+      </label>
+
+      <div class="row">
+        <div><label>Embed title</label><input name="embed_title" id="embed_title" value="{{ content.embed_title }}"></div>
+        <div><label>Embed colour</label><input name="embed_color" id="embed_color" value="{{ content.embed_color }}"></div>
+      </div>
+      <div class="row">
+        <div><label>Image URL <span class="muted">(optional)</span></label><input name="image_url" id="image_url" value="{{ content.image_url }}"></div>
+        <div><label>Footer <span class="muted">(optional)</span></label><input name="footer" id="footer" value="{{ content.footer }}"></div>
+      </div>
+
+      <label>Note for the version history</label>
+      <input name="note" placeholder="what you changed and why">
+
+      <div class="actions">
+        <button class="primary" type="submit" formaction="/messages/draft">Save draft</button>
+        <button type="submit" formaction="/messages/test" {{ 'disabled' if not admin_test_user_id }}>Send test to me</button>
+      </div>
+      {% if not admin_test_user_id %}
+      <p class="muted" style="font-size:12.5px">Set the Test DM User ID in <a href="/settings">Settings</a> to enable test sends.</p>
+      {% endif %}
+    </form>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h3>Live preview</h3>
+      <div class="preview">
+        <div class="preview-head">
+          <div class="avatar"></div>
+          <div><span class="preview-name" id="p-bot">Funnel Bot</span><span class="preview-tag">APP</span></div>
+        </div>
+        <div class="preview-body" id="p-body"></div>
+        <div class="preview-embed" id="p-embed" hidden>
+          <h4 id="p-embed-title"></h4>
+          <div id="p-embed-body"></div>
+          <img id="p-image" hidden alt="">
+          <div class="preview-footer" id="p-footer"></div>
+        </div>
+        <div class="suite-toolbar" id="p-buttons"><a class="preview-button" id="p-button" href="#" target="_blank" rel="noopener">Join</a></div>
+      </div>
+      <p class="muted" id="p-button-note" style="font-size:12.5px;margin-top:8px"></p>
+      <p class="preview-warn" id="p-warn" hidden></p>
+      <p class="muted" style="font-size:12.5px;margin-top:10px">Buttons use a separate tracking invite for each main destination selected on this feeder.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Variables</h3>
+      <table>
+        <thead><tr><th>Variable</th><th>Example</th><th>Meaning</th></tr></thead>
+        <tbody>
+        {% for name, example, description in variable_help %}
+          <tr><td><code>{{ '{' ~ name ~ '}' }}</code></td><td class="muted">{{ example }}</td><td class="muted">{{ description }}</td></tr>
+        {% endfor %}
+        {% for name, value in custom_variables.items() %}
+          <tr><td><code>{{ '{' ~ name ~ '}' }}</code></td><td class="muted">{{ value }}</td><td class="muted">Your custom variable</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted" style="font-size:12.5px;margin-top:8px">Add your own in <a href="/settings">Settings</a>. Built-in names cannot be overridden.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Versions</h3>
+      <table>
+        <thead><tr><th>Version</th><th>Status</th><th>Saved</th><th></th></tr></thead>
+        <tbody>
+        {% for version in versions %}
+          <tr>
+            <td><a href="/messages?kind={{ kind }}&version_id={{ version.id }}{{ '&guild_id=' ~ guild_id if guild_id else '' }}">Version {{ version.version }}</a>
+              {% if version.note %}<br><span class="muted" style="font-size:12px">{{ version.note }}</span>{% endif %}</td>
+            <td><span class="pill {{ 'pill-ok' if version.status == 'PUBLISHED' else 'pill-off' }}">{{ version.status|lower }}</span></td>
+            <td class="muted">{{ version.created_at|dt }}</td>
+            <td class="num">
+              {% if version.status != 'PUBLISHED' %}
+              <form method="post" action="/messages/{{ version.id }}/publish" class="inline-form"><button class="primary">Publish</button></form>
+              {% endif %}
+              <form method="post" action="/messages/{{ version.id }}/duplicate" class="inline-form"><button>Duplicate</button></form>
+              {% if version.status == 'DRAFT' %}
+              <form method="post" action="/messages/{{ version.id }}/delete" class="inline-form" onsubmit="return confirm('Delete this draft?')"><button class="danger">Delete</button></form>
+              {% elif version.status != 'ARCHIVED' %}
+              <form method="post" action="/messages/{{ version.id }}/archive" class="inline-form" onsubmit="return confirm('Archive this version? History keeps working.')"><button>Archive</button></form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty">No versions saved yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>startPreview();</script>
+{% endblock %}

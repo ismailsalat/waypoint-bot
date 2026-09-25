@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Feeders · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Feeders</h1>
+<p class="sub">Choose a feeder to set its main destinations, welcome message, DMs and channels.</p>
+
+<div class="panel">
+  <table>
+    <thead><tr><th>Server</th><th>Funnel</th><th>Delay</th><th>Main destinations</th><th>Tags</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.server.name }}</td>
+        <td><span class="pill {{ 'pill-ok' if row.effective.funnel_mode == 'LIVE' else 'pill-off' }}">{{ row.effective.funnel_mode|lower|replace('_',' ') }}</span></td>
+        <td>{{ row.effective.dm_delay_seconds }}s</td>
+        <td class="mono">{{ row.destinations|map(attribute='name')|join(', ') or 'Not selected' }}</td>
+        <td>{% for tag in row.tags %}<span class="tag">{{ tag }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
+        <td class="num"><a class="btn" href="/feeders/{{ row.server.guild_id }}">Configure</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No feeders yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

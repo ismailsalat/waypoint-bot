@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Health · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Health</h1>
+<p class="sub">What the bot found on its last check of each feeder. Jobs are queued here and picked up by the bot worker.</p>
+
+<div class="stats" style="margin-bottom:14px">
+  <div class="stat">
+    <b style="font-size:18px">
+      {% if worker.online %}<span class="dot dot-ok"></span> ONLINE{% else %}<span class="dot dot-warn"></span> OFFLINE{% endif %}
+    </b>
+    <span>Bot worker</span>
+  </div>
+  <div class="stat">
+    <b style="font-size:18px">{% if worker.seconds_ago is not none %}{{ worker.seconds_ago }}s ago{% else %}never{% endif %}</b>
+    <span>Last heartbeat</span>
+  </div>
+  <div class="stat"><b style="font-size:18px">{{ database.kind }}</b><span>{{ database.environment }} database</span></div>
+</div>
+
+{% if not worker.online %}
+<div class="banner">
+  The bot worker is not reporting in. Queued jobs will stay pending until it is running — start it with <code>python -m bot.main</code> (or <code>start-local.bat</code>).
+</div>
+{% endif %}
+
+<div class="panel" style="margin-bottom:14px">
+  <h3>Quick actions</h3>
+  <div class="actions" style="margin-top:6px">
+    <form method="post" action="/health/repair-all" class="inline-form"><button class="primary">Repair all feeders</button></form>
+    <form method="post" action="/tasks/clear" class="inline-form"><button>Clear finished jobs</button></form>
+    <a class="btn" href="/feeders">Open feeders</a>
+  </div>
+</div>
+
+{% for row in rows %}
+<div class="panel">
+  <div class="inline" style="justify-content:space-between">
+    <h3 style="margin:0">{{ row.server.name }}</h3>
+    <span class="muted" style="font-size:12.5px">Last checked {{ row.server.last_health_check|dt if row.server.last_health_check else 'never' }}</span>
+  </div>
+  <table style="margin-top:10px">
+    <tr><td>Bot in server</td><td>{% if row.server.bot_present %}<span class="pill pill-ok">OK</span>{% else %}<span class="pill pill-bad">MISSING</span>{% endif %}</td></tr>
+    <tr><td>Public funnel channel</td><td>#{{ row.effective.funnel_channel_name }}
+      {% if row.health.get('funnel_channel') == 'OK' %}<span class="pill pill-ok">OK</span>
+      {% elif row.health.get('funnel_channel') %}<span class="pill pill-bad">{{ row.health.get('funnel_channel')|upper }}</span>
+      {% else %}<span class="pill pill-off">NOT CHECKED</span>{% endif %}</td></tr>
+    <tr><td>Bump channel</td><td>#{{ row.effective.bump_channel_name }}
+      {% if row.health.get('bump_channel') == 'OK' %}<span class="pill pill-ok">OK</span>
+      {% elif row.health.get('bump_channel') %}<span class="pill pill-bad">{{ row.health.get('bump_channel')|upper }}</span>
+      {% else %}<span class="pill pill-off">NOT CHECKED</span>{% endif %}</td></tr>
+    {% for destination in row.destinations %}<tr><td>Invite · {{ destination.name }}</td><td>{% if destination.invite %}<span class="mono">{{ destination.invite_url }}</span> <span class="pill pill-ok">OK</span>{% else %}<span class="pill pill-bad">MISSING</span>{% endif %}</td></tr>{% else %}<tr><td>Tracking invites</td><td>No main destinations configured</td></tr>{% endfor %}
+    <tr><td>Public funnel message</td><td>
+      {% if not row.server.funnel_message_id %}<span class="pill pill-bad">MISSING</span>
+      {% elif row.outdated %}<span class="pill pill-bad">OUTDATED</span>
+      {% else %}<span class="pill pill-ok">OK</span>{% endif %}</td></tr>
+    <tr><td>Auto repair</td><td>{{ 'ON' if row.effective.auto_repair else 'OFF' }}</td></tr>
+  </table>
+  {% if row.health.get('errors') %}<p class="preview-warn">{{ row.health.get('errors')|join('; ') }}</p>{% endif %}
+  <div class="actions">
+    <form method="post" action="/feeders/{{ row.server.guild_id }}/repair" class="inline-form"><button class="primary">Repair</button></form>
+    <a class="btn" href="/feeders/{{ row.server.guild_id }}">Configure</a>
+    <a class="btn danger" href="/feeders/{{ row.server.guild_id }}#fresh">Fresh Setup</a>
+  </div>
+</div>
+{% else %}
+<div class="panel"><p class="empty">No feeders to check yet.</p></div>
+{% endfor %}
+
+<h2>Queued work</h2>
+<div class="panel">
+  <table>
+    <thead><tr><th>Job</th><th>Server</th><th>Created</th><th>Status</th><th>Started</th><th>Completed</th><th>Result</th><th></th></tr></thead>
+    <tbody>
+    {% for task in tasks %}
+      <tr>
+        <td>{{ task.task_type|lower|replace('_',' ') }}</td>
+        <td>{{ names.get(task.guild_id, '—') }}</td>
+        <td class="muted">{{ task.created_at|dt }}</td>
+        <td>
+          {% if task.status == 'DONE' %}<span class="pill pill-ok">DONE</span>
+          {% elif task.status in ('FAILED', 'ERROR') %}<span class="pill pill-bad">FAILED</span>
+          {% elif task.status == 'RUNNING' %}<span class="pill pill-main">RUNNING</span>
+          {% else %}<span class="pill pill-off">PENDING</span>{% endif %}
+        </td>
+        <td class="muted">{{ task.started_at|dt if task.started_at else '—' }}</td>
+        <td class="muted">{{ task.finished_at|dt if task.finished_at else '—' }}</td>
+        <td class="muted" style="font-size:12.5px">
+          {% if task.error %}{{ task.error }}
+          {% elif task.result %}{{ task.result }}
+          {% elif task.status == 'PENDING' and not worker.online %}Waiting — bot worker appears offline
+          {% elif task.status == 'PENDING' %}Waiting for the bot worker
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if task.status in ('FAILED', 'ERROR') %}
+          <form method="post" action="/tasks/{{ task.id }}/retry" class="inline-form"><button>Retry</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="empty">Nothing queued.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Audit log</h2>
+<div class="panel log" style="max-height:420px;overflow:auto">
+  <ul>
+  {% for entry in logs %}
+    <li><time>{{ entry.created_at|dt }}</time>{{ entry.detail or entry.action }}</li>
+  {% else %}<li class="empty">Nothing logged yet.</li>{% endfor %}
+  </ul>
+</div>
+{% endblock %}

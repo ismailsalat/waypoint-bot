@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}First run · {{ settings.dashboard_title }}{% endblock %}
+{% block content %}
+<h1>Set up your network</h1>
+<p class="sub">Six answers and the bot is ready. You can change all of them later.</p>
+
+<div class="panel" style="max-width:640px">
+  {% if not servers %}
+  <p class="empty">The bot is not in any server yet. Invite it to your main server first, then reload this page.</p>
+  {% endif %}
+  <form method="post" action="/setup">
+    <label>1. Which server is your main community?</label>
+    <select name="main_guild_id">
+      <option value="">Choose a server</option>
+      {% for server in servers %}
+      <option value="{{ server.guild_id }}">{{ server.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label>2. What do you want to call the network?</label>
+    <input name="network_name" value="{{ values.network_name }}" placeholder="Side Quest Network">
+
+    <label>3. Name for the public funnel channel in each feeder</label>
+    <input name="default_funnel_channel_name" value="{{ suggested_channel }}">
+
+    <label>4. Name for the private bump channel in each feeder</label>
+    <input name="default_bump_channel_name" value="{{ values.default_bump_channel_name }}">
+
+    <label>5. How long to wait before DMing a new feeder member (seconds)</label>
+    <input name="default_dm_delay_seconds" value="{{ values.default_dm_delay_seconds }}">
+
+    <div class="actions"><button class="primary" type="submit">6. Finish setup</button></div>
+  </form>
+</div>
+{% endblock %}

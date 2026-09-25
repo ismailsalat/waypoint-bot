@@ -1,0 +1,16 @@
+.env
+*.db
+*.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+.idea/
+.vscode/
+
+data/
+logs/
+*.db-shm
+*.db-wal

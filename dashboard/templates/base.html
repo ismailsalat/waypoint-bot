@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ settings.dashboard_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-theme="{{ settings.dashboard_theme }}" class="{{ 'compact' if settings.dashboard_compact else '' }}" style="--accent: {{ settings.dashboard_accent }}; --accent-soft: {{ settings.dashboard_accent }}26">
+<div class="shell">
+  <nav class="rail">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>
+        <strong>{{ settings.dashboard_title }}</strong>
+        <em>{{ network_name }}</em>
+      </span>
+    </div>
+    <a href="/" class="{{ 'on' if path == '/' }}">Overview</a>
+    <a href="/servers" class="{{ 'on' if path.startswith('/servers') }}">Servers</a>
+    <a href="/feeders" class="{{ 'on' if path.startswith('/feeders') }}">Feeders</a>
+    <a href="/scheduler" class="{{ 'on' if path.startswith('/scheduler') }}">Scheduler</a>
+    <a href="/messages" class="{{ 'on' if path.startswith('/messages') }}">Message studio</a>
+    <a href="/tags" class="{{ 'on' if path.startswith('/tags') }}">Tag experiments</a>
+    <a href="/conversions" class="{{ 'on' if path.startswith('/conversions') }}">Conversions</a>
+    <a href="/analytics" class="{{ 'on' if path.startswith('/analytics') }}">Analytics</a>
+    <a href="/health" class="{{ 'on' if path.startswith('/health') }}">Health</a>
+    <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">Settings</a>
+    <a href="/customize" class="{{ 'on' if path == '/customize' }}">Customize</a>
+    <div class="rail-foot">
+      <span class="dot {{ 'dot-warn' if development_mode else 'dot-ok' }}"></span>
+      {% if development_mode %}Development mode{% else %}Live{% endif %}
+      <br>
+      Main: {{ main_server.name if main_server else 'not set' }}
+      <br>
+      {% if database.is_production %}PRODUCTION DATABASE{% else %}LOCAL DATABASE{% endif %}
+      <span class="muted">({{ database.kind }})</span>
+    </div>
+  </nav>
+
+  <main>
+    {% if database.is_production %}
+    <div class="banner" style="background:#f2585f1a;border-color:#f2585f66;color:#ffa3a7">
+      PRODUCTION DATABASE — {{ database.environment }} · {{ database.kind }}. Changes here affect your live network.
+    </div>
+    {% endif %}
+    {% if development_mode %}
+    <div class="banner">⚠ Development mode active. Production funnel DMs and production analytics are suppressed; only your test user receives messages. <a href="/settings">Change it</a></div>
+    {% endif %}
+    {% if not main_server and path != '/setup' %}
+    <div class="banner">No default main server selected. <a href="/settings">Choose a default</a> or select main destinations on each feeder.</div>
+    {% endif %}
+    {% if message %}<div class="toast">{{ message }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
