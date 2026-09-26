@@ -12,6 +12,7 @@ import anyio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -924,16 +925,66 @@ templates.env.filters["tojson_pretty"] = lambda value: json.dumps(value, indent=
 
 
 # Local dashboard boundary: prevent remote access, DNS rebinding and cross-site writes.
+def _is_local_url(value: str | None) -> bool:
+    if not value or value == "null":
+        return False
+
+    try:
+        parsed = urlsplit(value)
+    except Exception:
+        return False
+
+    return parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
+
+
 @app.middleware("http")
 async def local_dashboard_guard(request: Request, call_next):
+    local_hosts = {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "testserver",
+    }
+
+    local_peers = {
+        "127.0.0.1",
+        "::1",
+        "testclient",
+    }
+
     host = request.url.hostname
     peer = request.client.host if request.client else ""
-    if host not in {"localhost", "127.0.0.1", "::1", "testserver"} or peer not in {"127.0.0.1", "::1", "testclient"}:
-        return JSONResponse({"detail": "This dashboard is local-only. Open it on this computer."}, status_code=403)
+
+    # The dashboard itself must only be reachable from this computer.
+    if host not in local_hosts or peer not in local_peers:
+        return JSONResponse(
+            {"detail": "This dashboard is local-only. Open it on this computer."},
+            status_code=403,
+        )
+
+    # Protect state-changing requests from actual non-local websites.
+    # Do not reject solely on Sec-Fetch-Site, because browsers may label
+    # localhost <-> 127.0.0.1 navigation as cross-site.
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
-        if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin != str(request.base_url).rstrip("/")):
-            return JSONResponse({"detail": "Cross-site changes are blocked."}, status_code=403)
+        referer = request.headers.get("referer")
+
+        if origin and origin != "null" and not _is_local_url(origin):
+            return JSONResponse(
+                {"detail": "Blocked request from a non-local website."},
+                status_code=403,
+            )
+
+        if not origin and referer and not _is_local_url(referer):
+            return JSONResponse(
+                {"detail": "Blocked request from a non-local website."},
+                status_code=403,
+            )
+
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
