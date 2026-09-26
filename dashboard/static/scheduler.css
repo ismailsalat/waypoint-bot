@@ -1,0 +1,252 @@
+.scheduler-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  margin-bottom:16px;
+}
+.scheduler-head h1 { font-size:26px; }
+.scheduler-mode-wrap { padding-top:2px; }
+.mode-chip, .status-chip, .result-chip, .mini-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.01em;
+  white-space:nowrap;
+}
+.mode-live { color:#8fe3b8; border-color:#49d18a66; background:#49d18a16; }
+.mode-sim { color:#c5baff; border-color:#8b7cf066; background:#8b7cf018; }
+.mode-off { color:#ffa3a7; border-color:#f2585f66; background:#f2585f16; }
+.mode-loading { color:var(--muted); }
+
+.scheduler-commandbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px;
+}
+.command-primary, .command-secondary { display:flex; gap:8px; flex-wrap:wrap; }
+
+.scheduler-note {
+  margin:10px 0 0;
+  padding:9px 12px;
+  border-left:3px solid var(--accent);
+  background:var(--accent-soft);
+  color:var(--muted);
+  font-size:12.5px;
+}
+.scheduler-note strong { color:var(--text); }
+.scheduler-note span { margin-left:5px; }
+
+.scheduler-stats { grid-template-columns:repeat(7,minmax(105px,1fr)); }
+.scheduler-stats .stat-card {
+  position:relative;
+  padding:14px 15px;
+  overflow:hidden;
+}
+.scheduler-stats .stat-card::before {
+  content:"";
+  position:absolute;
+  left:0; top:0; bottom:0;
+  width:3px;
+  background:var(--line);
+}
+.scheduler-stats .stat-card.stat-green::before { background:var(--ok); }
+.scheduler-stats .stat-card.stat-amber::before { background:var(--warn); }
+.scheduler-stats .stat-card.stat-red::before { background:var(--bad); }
+.scheduler-stats .stat-card.stat-purple::before { background:#8b7cf0; }
+.scheduler-stats strong { font-size:25px; line-height:1; }
+.scheduler-stats span { font-size:11px; margin-top:5px; }
+
+.scheduler-legend {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px 14px;
+  margin-bottom:16px;
+}
+.scheduler-legend strong { margin-right:4px; }
+
+.result-confirmed { color:#8fe3b8; border-color:#49d18a55; background:#49d18a12; }
+.result-unconfirmed { color:#f5c072; border-color:#f0a83a66; background:#f0a83a14; }
+.result-simulated { color:#c5baff; border-color:#8b7cf066; background:#8b7cf014; }
+.result-waiting { color:#9cc9ff; border-color:#5ba4f066; background:#5ba4f014; }
+.result-failed { color:#ffa3a7; border-color:#f2585f66; background:#f2585f14; }
+.result-neutral { color:var(--muted); background:var(--panel-2); }
+
+.scheduler-account-list { display:flex; flex-direction:column; gap:16px; }
+.scheduler-account {
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  border-radius:10px;
+}
+.account-top {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  padding:16px 18px;
+  background:linear-gradient(90deg,var(--panel-2),var(--panel));
+  border-bottom:1px solid var(--line);
+}
+.account-title-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.account-title-row h2 { margin:0; font-size:18px; }
+.account-route {
+  margin-top:9px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  font-size:12px;
+}
+.account-route .route-account {
+  color:#d8d3ff;
+  border:1px solid #8b7cf055;
+  background:#8b7cf014;
+  border-radius:5px;
+  padding:3px 7px;
+}
+.account-route .route-server {
+  border:1px solid var(--line);
+  background:var(--ink);
+  border-radius:5px;
+  padding:3px 7px;
+}
+.route-arrow { color:var(--muted); }
+.account-next {
+  min-width:220px;
+  text-align:right;
+}
+.account-next .next-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.account-next .next-server { font-weight:700; font-size:14px; }
+.account-next .next-time { color:#9cc9ff; font-size:12px; }
+
+.account-info {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:1px;
+  background:var(--line);
+  border-bottom:1px solid var(--line);
+}
+.info-cell {
+  background:var(--panel);
+  padding:10px 14px;
+  min-width:0;
+}
+.info-cell span { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+.info-cell strong { display:block; margin-top:2px; font-size:12.5px; overflow-wrap:anywhere; }
+
+.account-controls {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+}
+.account-controls .left, .account-controls .right { display:flex; gap:7px; flex-wrap:wrap; }
+button.control-start { color:#8fe3b8; border-color:#49d18a55; }
+button.control-stop { color:#ffa3a7; border-color:#f2585f55; }
+button.control-pause { color:#f5c072; border-color:#f0a83a55; }
+button.control-reset { color:#9cc9ff; border-color:#5ba4f055; }
+button.danger-soft { color:#ffa3a7; border-color:#f2585f44; }
+
+.target-list { padding:12px; display:flex; flex-direction:column; gap:8px; }
+.target-row {
+  display:grid;
+  grid-template-columns:minmax(230px,1.25fr) minmax(160px,.75fr) minmax(170px,.85fr) minmax(220px,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--ink);
+  padding:11px 12px;
+}
+.target-row.target-disabled { opacity:.65; }
+.target-main { min-width:0; }
+.target-name-line { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.target-name { font-weight:750; font-size:14px; }
+.target-owner { color:var(--muted); font-size:11px; margin-top:2px; }
+.target-id { color:var(--muted); font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; margin-top:4px; }
+.target-timing .big, .target-next .big { font-weight:700; font-size:13px; }
+.target-timing .small, .target-next .small { color:var(--muted); font-size:11px; margin-top:2px; }
+.target-next .countdown { color:#9cc9ff; }
+.target-result .result-chip { margin-bottom:4px; }
+.target-result .counts { color:var(--muted); font-size:10.5px; line-height:1.45; }
+.target-result .error-text { color:#ffa3a7; font-size:11px; margin-top:4px; }
+.target-actions { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
+.target-actions button { padding:6px 9px; font-size:11.5px; }
+
+.empty-targets {
+  margin:12px;
+  padding:18px;
+  border:1px dashed var(--line);
+  border-radius:8px;
+  color:var(--muted);
+  text-align:center;
+}
+.running-warning {
+  margin:0 12px 12px;
+  padding:8px 10px;
+  border-radius:6px;
+  background:#f0a83a10;
+  border:1px solid #f0a83a33;
+  color:#f5c072;
+  font-size:11.5px;
+}
+
+.status-running { color:#8fe3b8; border-color:#49d18a55; background:#49d18a12; }
+.status-paused { color:#f5c072; border-color:#f0a83a55; background:#f0a83a12; }
+.status-stopped { color:var(--muted); background:var(--panel-2); }
+.status-error { color:#ffa3a7; border-color:#f2585f55; background:#f2585f12; }
+.status-waiting { color:#9cc9ff; border-color:#5ba4f055; background:#5ba4f012; }
+
+.scheduler-bottom-grid {
+  display:grid;
+  grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);
+  gap:14px;
+  margin-top:16px;
+}
+.scheduler-bottom-grid .card { margin:0; }
+.log-toolbar { justify-content:space-between; margin:8px 0; }
+.event-line {
+  display:grid;
+  grid-template-columns:145px 55px 1fr;
+  gap:9px;
+  padding:5px 7px;
+  border-bottom:1px solid var(--line);
+}
+.event-line:last-child { border-bottom:0; }
+.event-time { color:var(--muted); }
+.event-level { font-weight:700; }
+.event-level.INFO { color:#9cc9ff; }
+.event-level.WARN { color:#f5c072; }
+.event-level.ERROR { color:#ffa3a7; }
+
+@media (max-width:1100px) {
+  .scheduler-stats { grid-template-columns:repeat(4,minmax(105px,1fr)); }
+  .target-row { grid-template-columns:minmax(220px,1.2fr) minmax(150px,.8fr) minmax(170px,.9fr); }
+  .target-result { grid-column:1 / 3; }
+  .target-actions { grid-column:3; grid-row:2; }
+}
+@media (max-width:760px) {
+  .scheduler-head, .account-top { grid-template-columns:1fr; display:grid; }
+  .account-next { min-width:0; text-align:left; }
+  .account-info { grid-template-columns:1fr 1fr; }
+  .scheduler-stats { grid-template-columns:repeat(2,minmax(105px,1fr)); }
+  .target-row { grid-template-columns:1fr; }
+  .target-result, .target-actions { grid-column:auto; grid-row:auto; justify-content:flex-start; }
+  .scheduler-bottom-grid { grid-template-columns:1fr; }
+}

@@ -43,8 +43,12 @@ class AccountRunner:
             return
         self._stop_evt.clear()
         self.status = "waiting"
-        self._thread = threading.Thread(target=self._run, args=(start_delay_s,), daemon=True,
-                                        name=f"runner-{self._account.account_id}")
+        self._thread = threading.Thread(
+            target=self._run,
+            args=(start_delay_s,),
+            daemon=True,
+            name=f"runner-{self._account.account_id}",
+        )
         self._thread.start()
 
     def stop(self):
@@ -77,10 +81,15 @@ class AccountRunner:
                 account = self._store.get(self._account.account_id)
                 if not account or not account.enabled:
                     break
-                servers = [s for s in account.servers if s.enabled and s.guild_id and (s.channel_id or s.follow_managed_channel)]
+                servers = [
+                    s for s in account.servers
+                    if s.enabled and s.guild_id and (s.channel_id or s.follow_managed_channel)
+                ]
                 now = _now()
                 if account.last_action_at:
-                    remaining = account.account_cooldown_min * 60 - (now - account.last_action_at).total_seconds()
+                    remaining = account.account_cooldown_min * 60 - (
+                        now - account.last_action_at
+                    ).total_seconds()
                     if remaining > 0:
                         self._sleep(remaining)
                         continue
@@ -88,20 +97,23 @@ class AccountRunner:
                 if not due:
                     self._sleep(1)
                     continue
-                eligible=[]
+                eligible = []
                 for candidate in due:
                     if candidate.follow_managed_channel:
-                        known=self._target_status(candidate.guild_id)
+                        known = self._target_status(candidate.guild_id)
                         if not known or not known.get("ready"):
                             continue
                         if known.get("channel_id"):
-                            candidate.channel_id=known["channel_id"]
+                            candidate.channel_id = known["channel_id"]
                     eligible.append(candidate)
                 if not eligible:
-                    self.status="waiting_for_setup"
+                    self.status = "waiting_for_setup"
                     self._sleep(1)
                     continue
-                target=min(eligible,key=lambda s:s.next_run_at or datetime.min.replace(tzinfo=timezone.utc))
+                target = min(
+                    eligible,
+                    key=lambda s: s.next_run_at or datetime.min.replace(tzinfo=timezone.utc),
+                )
                 if not self._stop_evt.is_set() and not self._pause_evt.is_set():
                     self._execute_server(account, target)
         except Exception:
@@ -115,28 +127,47 @@ class AccountRunner:
     def _execute_server(self, account, server):
         prefs = self._preferences()
         self.status = "running"
-        book=self._cooldowns[prefs["dry_run"]] if self._cooldowns else None
+        book = self._cooldowns[prefs["dry_run"]] if self._cooldowns else None
         adapter = None
         now = _now()
-        # Persist a conservative reservation BEFORE an external request. If the
-        # process crashes after send, a restart must not immediately send again.
-        cooldown = server.cooldown_min if server.cooldown_min is not None else account.server_cooldown_min
-        jitter = server.random_offset_min if server.random_offset_min is not None else account.random_offset_min
-        next_time=now + timedelta(minutes=cooldown + random.uniform(0, jitter))
+
+        previous_last_action = account.last_action_at
+        previous_last_run = server.last_run_at
+        previous_next_run = server.next_run_at
+
+        cooldown = (
+            server.cooldown_min
+            if server.cooldown_min is not None
+            else account.server_cooldown_min
+        )
+        jitter = (
+            server.random_offset_min
+            if server.random_offset_min is not None
+            else account.random_offset_min
+        )
+        next_time = now + timedelta(minutes=cooldown + random.uniform(0, jitter))
         if book:
-            claimed,next_time=book.claim(server.guild_id,next_time)
+            claimed, next_time = book.claim(server.guild_id, next_time)
             if not claimed:
-                server.next_run_at=next_time
-                server.last_result="simulated_shared_cooldown" if prefs["dry_run"] else "waiting_shared_cooldown"
+                server.next_run_at = next_time
+                server.last_result = (
+                    "simulated_shared_cooldown"
+                    if prefs["dry_run"]
+                    else "waiting_shared_cooldown"
+                )
                 self._store.upsert(account)
-                self.status="waiting"
+                self.status = "waiting"
                 return
-        account.last_action_at=now
-        server.last_run_at=now
-        server.next_run_at=next_time
+
+        # Conservative reservation before an external request. If the process
+        # crashes during/after a real send, the restart will not send twice.
+        account.last_action_at = now
+        server.last_run_at = now
+        server.next_run_at = next_time
         server.last_result = "in_progress"
         server.last_error = ""
         self._store.upsert(account)
+
         try:
             if prefs["dry_run"]:
                 server.total_simulated += 1
@@ -145,30 +176,67 @@ class AccountRunner:
             else:
                 credential = get_credential(account.account_id)
                 if not credential:
-                    raise AdapterError("MISSING_TOKEN", "Add a credential to this account.", retryable=False)
+                    raise AdapterError(
+                        "MISSING_TOKEN",
+                        "Add a credential to this account.",
+                        retryable=False,
+                    )
                 adapter = self._get_adapter(account.token_type)
                 adapter.connect(credential, server.guild_id, server.channel_id)
-                known=self._target_status(server.guild_id) if server.follow_managed_channel else {}
-                if known and (not known.get("ready") or known.get("channel_id") != server.channel_id):
-                    server.last_result="waiting_for_setup"
-                    server.next_run_at=_now()+timedelta(seconds=5)
+
+                known = (
+                    self._target_status(server.guild_id)
+                    if server.follow_managed_channel
+                    else {}
+                )
+                if known and (
+                    not known.get("ready")
+                    or known.get("channel_id") != server.channel_id
+                ):
+                    # No external operation happened. Do not consume the account
+                    # gap or the full server cooldown.
+                    account.last_action_at = previous_last_action
+                    server.last_run_at = previous_last_run
+                    server.last_result = "waiting_for_setup"
+                    server.next_run_at = _now() + timedelta(seconds=5)
                     if book:
-                        book.defer(server.guild_id,server.next_run_at)
+                        book.defer(server.guild_id, server.next_run_at)
                     return
+
                 if self._stop_evt.is_set() or self._pause_evt.is_set():
+                    # Critical fix: a request that was cancelled BEFORE send must
+                    # not leave a fake 2-hour reservation behind.
+                    account.last_action_at = previous_last_action
+                    server.last_run_at = previous_last_run
+                    server.next_run_at = previous_next_run
                     server.last_result = "cancelled_before_send"
+                    if book:
+                        book.release(server.guild_id, expected_until=next_time)
+                    self._log(
+                        f"{server.name}: cancelled before send; cooldown released",
+                        "INFO",
+                    )
                     return
+
                 operation_id = str(uuid.uuid4())
-                result = adapter.execute(server.guild_id, server.channel_id,
-                                         server.message or account.message, operation_id)
+                result = adapter.execute(
+                    server.guild_id,
+                    server.channel_id,
+                    server.message or account.message,
+                    operation_id,
+                )
                 if not result.success:
-                    raise AdapterError("FAILED", result.message, retryable=result.retryable)
-                # Bot mode can verify the exact message. Legacy user transport's
-                # response lookup is not correlated reliably: report it as sent.
+                    raise AdapterError(
+                        "FAILED",
+                        result.message,
+                        retryable=result.retryable,
+                    )
+
                 verified = False
                 if account.token_type == "bot" and result.external_id:
                     check = adapter.verify_result(operation_id, result.external_id)
                     verified = check.success and check.verified
+
                 server.total_runs += 1
                 if verified:
                     server.total_ok += 1
@@ -178,24 +246,35 @@ class AccountRunner:
                     server.last_result = "sent_unconfirmed"
                 self._consec_failures[server.server_id] = 0
                 self._log(f"{server.name}: {server.last_result}")
+
         except AdapterError as exc:
             failures = self._consec_failures.get(server.server_id, 0) + 1
             self._consec_failures[server.server_id] = failures
             server.total_runs += 1
             server.total_fail += 1
             server.last_result = "failed"
-            # Error codes only: third-party response bodies may contain secrets.
             server.last_error = str(exc.code)[:100]
-            if not exc.retryable or (not exc.retry_after_ms and failures >= prefs["max_failures"]):
+            if not exc.retryable or (
+                not exc.retry_after_ms and failures >= prefs["max_failures"]
+            ):
                 server.enabled = False
-                self._log(f"{server.name}: {exc.code}; target disabled until you re-enable it", "ERROR")
+                self._log(
+                    f"{server.name}: {exc.code}; target disabled until you re-enable it",
+                    "ERROR",
+                )
             else:
-                wait = (exc.retry_after_ms / 1000 if exc.retry_after_ms else
-                        min(prefs["retry_base_seconds"] * 2 ** min(failures - 1, 20), prefs["retry_max_seconds"]))
+                wait = (
+                    exc.retry_after_ms / 1000
+                    if exc.retry_after_ms
+                    else min(
+                        prefs["retry_base_seconds"] * 2 ** min(failures - 1, 20),
+                        prefs["retry_max_seconds"],
+                    )
+                )
                 wait = max(wait, account.account_cooldown_min * 60, 1)
                 server.next_run_at = _now() + timedelta(seconds=wait)
                 if book:
-                    book.defer(server.guild_id,server.next_run_at)
+                    book.defer(server.guild_id, server.next_run_at)
                 self._log(f"{server.name}: {exc.code}; retry scheduled", "WARN")
         except Exception:
             server.total_runs += 1
@@ -223,7 +302,15 @@ class AccountRunner:
 
 
 class AutoScheduler:
-    def __init__(self, store: AccountStore, log_cb=None, start_offset_min=5, preferences=None, cooldowns=None, target_status=None):
+    def __init__(
+        self,
+        store: AccountStore,
+        log_cb=None,
+        start_offset_min=5,
+        preferences=None,
+        cooldowns=None,
+        target_status=None,
+    ):
         self._store = store
         self._cooldowns = cooldowns
         self._target_status = target_status
@@ -235,7 +322,11 @@ class AutoScheduler:
 
     def start(self, auto_only=True):
         delay = 0
-        offset = self._preferences()["start_offset_min"] * 60 if self._preferences else self._start_offset_s
+        offset = (
+            self._preferences()["start_offset_min"] * 60
+            if self._preferences
+            else self._start_offset_s
+        )
         for account in self._store.list():
             if account.enabled and (not auto_only or account.auto_start):
                 self._start_account(account, delay)
@@ -248,7 +339,14 @@ class AutoScheduler:
             existing = self._runners.get(account.account_id)
             if existing and existing.is_running():
                 return
-            runner = AccountRunner(account, self._store, self._log_cb, self._preferences, self._cooldowns, self._target_status)
+            runner = AccountRunner(
+                account,
+                self._store,
+                self._log_cb,
+                self._preferences,
+                self._cooldowns,
+                self._target_status,
+            )
             self._runners[account.account_id] = runner
             runner.start(start_delay_s)
 
@@ -289,7 +387,9 @@ class AutoScheduler:
     def remove_account(self, account_id):
         self.stop_account(account_id)
         if not self.wait_stopped(account_id, 0):
-            raise ValueError("Account is stopping; wait for its current request to finish.")
+            raise ValueError(
+                "Account is stopping; wait for its current request to finish."
+            )
         with self._lock:
             self._runners.pop(account_id, None)
 
@@ -300,13 +400,22 @@ class AutoScheduler:
         for account in self._store.list():
             runner = runners.get(account.account_id)
             item = account.to_dict()
-            item.update(status=runner.status if runner else "stopped",
-                        is_running=runner.is_running() if runner else False)
+            item.update(
+                status=runner.status if runner else "stopped",
+                is_running=runner.is_running() if runner else False,
+            )
             for server in item["servers"]:
-                server["consec_fail"] = runner._consec_failures.get(server["server_id"], 0) if runner else 0
+                server["consec_fail"] = (
+                    runner._consec_failures.get(server["server_id"], 0)
+                    if runner
+                    else 0
+                )
             result.append(item)
         return result
 
     def health(self):
         statuses = self.status()
-        return {"active": sum(s["is_running"] for s in statuses), "total_runners": len(self._runners)}
+        return {
+            "active": sum(s["is_running"] for s in statuses),
+            "total_runners": len(self._runners),
+        }

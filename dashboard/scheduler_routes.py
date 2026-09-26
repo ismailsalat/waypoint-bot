@@ -40,7 +40,6 @@ class ServerInput(Input):
     random_offset_min: float | None = Field(None, ge=0, le=1440)
     message: str = Field("", max_length=1800)
 
-
     @model_validator(mode="after")
     def require_channel(self):
         if not self.channel_id and not self.follow_managed_channel:
@@ -102,8 +101,11 @@ def install(app, templates, page_context, get_db):
         servers = [{"name": s.name, "guild_id": str(s.guild_id),
                     "channel_id": str(s.bump_channel_id or ""), "type": s.server_type}
                    for s in known if s.bot_present]
-        return templates.TemplateResponse(request, "scheduler.html",
-                   await page_context(request, db, known_servers=servers))
+        return templates.TemplateResponse(
+            request,
+            "scheduler.html",
+            await page_context(request, db, known_servers=servers),
+        )
 
     @router.get("/customize")
     async def customize_page(request: Request, db=Depends(get_db)):
@@ -165,6 +167,31 @@ def install(app, templates, page_context, get_db):
                 rt.scheduler.start(auto_only=False)
         return {"accepted": True}
 
+    @router.post("/api/scheduler/accounts/{account_id}/reset-schedule")
+    def reset_account_schedule(account_id: str, rt=Depends(runtime)):
+        try:
+            rt.reset_account_schedule(account_id)
+        except KeyError:
+            raise HTTPException(404, "Account not found") from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"reset": True}
+
+    @router.post("/api/scheduler/accounts/{account_id}/reset-stats")
+    def reset_account_stats(account_id: str, rt=Depends(runtime)):
+        try:
+            rt.reset_account_stats(account_id)
+        except KeyError:
+            raise HTTPException(404, "Account not found") from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"reset": True}
+
+    @router.delete("/api/scheduler/events")
+    def clear_events(rt=Depends(runtime)):
+        rt.clear_events()
+        return {"cleared": True}
+
     def save_server(rt, account_id, server_id, data):
         with rt.lock:
             idle(rt, account_id)
@@ -174,7 +201,6 @@ def install(app, templates, page_context, get_db):
                 raise HTTPException(404, "Server target not found")
             if not server_id and len(account.servers) >= 200:
                 raise HTTPException(400, "Maximum 200 targets per account")
-            # Moving to another channel/guild preserves timing/counters but changes only configuration.
             for key, value in data.model_dump().items():
                 setattr(server, key, value)
             if not server_id:
@@ -204,18 +230,41 @@ def install(app, templates, page_context, get_db):
             rt.store.delete_server(account_id, server_id)
         return {"deleted": True}
 
+    @router.post("/api/scheduler/accounts/{account_id}/targets/{server_id}/reset-schedule")
+    def reset_target_schedule(account_id: str, server_id: str, rt=Depends(runtime)):
+        try:
+            rt.reset_target_schedule(account_id, server_id)
+        except KeyError:
+            raise HTTPException(404, "Account or target not found") from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"reset": True}
+
+    @router.post("/api/scheduler/accounts/{account_id}/targets/{server_id}/reset-stats")
+    def reset_target_stats(account_id: str, server_id: str, rt=Depends(runtime)):
+        try:
+            rt.reset_target_stats(account_id, server_id)
+        except KeyError:
+            raise HTTPException(404, "Account or target not found") from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"reset": True}
+
     @router.get("/api/scheduler/export")
     def export(rt=Depends(runtime)):
-        # Configuration only: never export tokens, browser paths or activity logs.
         accounts = []
         for account in rt.store.list():
             values = {k: v for k, v in account.to_dict().items() if k in AccountInput.model_fields}
             values["account_id"] = account.account_id
-            values["servers"] = [{k: v for k, v in s.to_dict().items() if k in ServerInput.model_fields}
-                                 for s in account.servers]
+            values["servers"] = [
+                {k: v for k, v in s.to_dict().items() if k in ServerInput.model_fields}
+                for s in account.servers
+            ]
             accounts.append(values)
-        return JSONResponse({"format": "waypoint-suite-scheduler-v1", "accounts": accounts},
-                            headers={"Content-Disposition": 'attachment; filename="scheduler-accounts.json"'})
+        return JSONResponse(
+            {"format": "waypoint-suite-scheduler-v1", "accounts": accounts},
+            headers={"Content-Disposition": 'attachment; filename="scheduler-accounts.json"'},
+        )
 
     @router.post("/api/scheduler/import/accounts")
     def import_accounts(data: ImportInput, rt=Depends(runtime)):
@@ -228,9 +277,10 @@ def install(app, templates, page_context, get_db):
                 if len(existing) + len(data.accounts) > 200:
                     raise ValueError("Maximum 200 accounts")
                 for raw in data.accounts:
-                    # Legacy accounts.json is supported. Explicitly discard any
-                    # secret, browser association and autostart setting.
-                    clean = {k: v for k, v in raw.items() if k in AccountInput.model_fields and k not in ("token", "clear_token")}
+                    clean = {
+                        k: v for k, v in raw.items()
+                        if k in AccountInput.model_fields and k not in ("token", "clear_token")
+                    }
                     clean["auto_start"] = False
                     clean["enabled"] = False
                     fields = AccountInput.model_validate(clean)
@@ -249,7 +299,9 @@ def install(app, templates, page_context, get_db):
                     if not isinstance(server_rows, list) or len(server_rows) > 200:
                         raise ValueError("Invalid server list")
                     for server_raw in server_rows:
-                        fields = ServerInput.model_validate({k: v for k, v in server_raw.items() if k in ServerInput.model_fields})
+                        fields = ServerInput.model_validate({
+                            k: v for k, v in server_raw.items() if k in ServerInput.model_fields
+                        })
                         server = ServerTarget(**fields.model_dump())
                         if server.guild_id in targets:
                             raise ValueError("A server is assigned more than once. No accounts were imported.")
@@ -258,7 +310,14 @@ def install(app, templates, page_context, get_db):
                     added.append(account)
                 rt.store.replace_all(existing + added)
             except (ValueError, TypeError, AttributeError):
-                raise HTTPException(400, "Import rejected: check names, numeric IDs, timing, duplicate accounts/servers, and stop all accounts first. Nothing was imported.") from None
-        return {"imported": len(added), "note": "Imported accounts are disabled with auto-start off. Review and enable each account."}
+                raise HTTPException(
+                    400,
+                    "Import rejected: check names, numeric IDs, timing, duplicate accounts/servers, "
+                    "and stop all accounts first. Nothing was imported.",
+                ) from None
+        return {
+            "imported": len(added),
+            "note": "Imported accounts are disabled with auto-start off. Review and enable each account.",
+        }
 
     app.include_router(router)

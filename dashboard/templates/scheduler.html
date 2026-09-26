@@ -1,31 +1,78 @@
 {% extends "base.html" %}
 {% block title %}Scheduler · {{ settings.dashboard_title }}{% endblock %}
 {% block content %}
-<header class="page-head"><div><h1>Scheduler</h1><p class="muted">Accounts, servers and schedules in one place.</p></div></header>
+<link rel="stylesheet" href="/static/scheduler.css">
+
+<header class="page-head scheduler-head">
+  <div>
+    <h1>Scheduler Control</h1>
+    <p class="muted">See exactly which account owns each server, what happens next, and why.</p>
+  </div>
+  <div class="scheduler-mode-wrap">
+    <span id="scheduler-mode" class="mode-chip mode-loading">Loading…</span>
+  </div>
+</header>
+
 <div id="scheduler-error" class="banner" role="alert" hidden></div>
-<div class="suite-toolbar">
-  <strong id="scheduler-mode">Loading…</strong>
-  <button id="add-account">Add account</button>
-  <button id="start-all">Start all</button>
-  <button id="stop-all" class="danger">Stop all</button>
-  <button id="open-settings">Scheduler settings</button>
+
+<section class="scheduler-commandbar">
+  <div class="command-primary">
+    <button id="add-account" class="primary">+ Add account</button>
+    <button id="start-all">▶ Start all</button>
+    <button id="stop-all" class="danger">■ Stop all</button>
+  </div>
+  <div class="command-secondary">
+    <button id="open-settings">⚙ Scheduler settings</button>
+  </div>
+</section>
+
+<div class="scheduler-note">
+  <strong>Local controller:</strong> this scheduler runs while the dashboard process is open.
+  <span>Closing only the browser tab does not stop it.</span>
 </div>
-<p class="muted">Runs on this computer while the dashboard process is open. Closing only the browser tab does not stop it. Simulation is independent of the bot’s development mode.</p>
-<div class="suite-stats" id="scheduler-summary" aria-live="polite"></div>
-<div id="account-list"></div>
-<details class="card"><summary>Import and export accounts</summary>
-<p>Import the old scheduler’s <code>data/accounts.json</code> or an exported account file. Imported accounts start disabled. Credentials are never exported.</p>
-<input id="import-file" type="file" accept=".json,application/json"><button id="import-accounts">Import accounts</button>
-<a class="btn" href="/api/scheduler/export">Export accounts</a><p id="import-result" role="status"></p>
-</details>
-<details class="card"><summary>Recent scheduler events</summary><div class="suite-events" id="scheduler-events"></div></details>
+
+<div class="suite-stats scheduler-stats" id="scheduler-summary" aria-live="polite"></div>
+
+<section class="scheduler-legend card">
+  <strong>Status guide</strong>
+  <span class="result-chip result-confirmed">Confirmed</span>
+  <span class="result-chip result-unconfirmed">Sent · unverified</span>
+  <span class="result-chip result-simulated">Simulation</span>
+  <span class="result-chip result-waiting">Waiting</span>
+  <span class="result-chip result-failed">Failed</span>
+  <span class="muted">“Live scheduler” means simulation is off; each target’s result shows what actually happened.</span>
+</section>
+
+<div id="account-list" class="scheduler-account-list"></div>
+
+<section class="scheduler-bottom-grid">
+  <details class="card">
+    <summary>Import and export accounts</summary>
+    <p>Import the old scheduler’s <code>data/accounts.json</code> or an exported account file. Imported accounts start disabled. Credentials are never exported.</p>
+    <div class="suite-toolbar">
+      <input id="import-file" type="file" accept=".json,application/json">
+      <button id="import-accounts">Import accounts</button>
+      <a class="btn" href="/api/scheduler/export">Export accounts</a>
+    </div>
+    <p id="import-result" role="status"></p>
+  </details>
+
+  <details class="card" open>
+    <summary>Recent scheduler events</summary>
+    <div class="suite-toolbar log-toolbar">
+      <span class="muted">Newest first</span>
+      <button id="clear-events" class="danger-soft">Clear log</button>
+    </div>
+    <div class="suite-events" id="scheduler-events"></div>
+  </details>
+</section>
 
 <dialog id="account-dialog"><form id="account-form">
 <h2 id="account-heading">Account</h2>
 <input name="account_id" type="hidden">
 <label>Account name<input name="name" required maxlength="100"></label>
-<label>Account type<select name="token_type"><option value="user">User token · bump account</option><option value="bot">Official bot · scheduled messages</option></select></label>
-<p class="muted">Official bot mode posts a message; it does not invoke DISBOARD’s slash command. The original user transport is retained, with delivery shown as unconfirmed.</p>
+<label>Account type<select name="token_type"><option value="user">User transport</option><option value="bot">Official bot · scheduled messages</option></select></label>
+<p class="muted">Account type controls the transport. The dashboard separately shows whether a delivery was confirmed, unverified, simulated, waiting, or failed.</p>
 <label>Credential<input name="token" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved credential"></label>
 <label class="check"><input name="clear_token" type="checkbox"> Remove saved credential</label>
 <p class="muted">Stored in your OS credential manager when available; otherwise only for this session. Never included in exports.</p>
@@ -37,7 +84,7 @@
 <label>Default bot message<textarea name="message" maxlength="1800" required></textarea></label>
 <label class="check"><input name="enabled" type="checkbox"> Account enabled</label>
 <label class="check"><input name="auto_start" type="checkbox"> Start when the dashboard starts (requires scheduler enabled)</label>
-<div class="suite-toolbar"><button type="submit">Save account</button><button type="button" data-close>Cancel</button></div>
+<div class="suite-toolbar"><button type="submit" class="primary">Save account</button><button type="button" data-close>Cancel</button></div>
 <p class="form-error" role="alert"></p>
 </form></dialog>
 
@@ -51,15 +98,15 @@
 <div class="suite-grid"><label>Cooldown override (minutes)<input name="cooldown_min" type="number" min="0.01" max="525600" step="any" placeholder="Inherit from account"></label><label>Random delay override (minutes)<input name="random_offset_min" type="number" min="0" max="1440" step="any" placeholder="Inherit from account"></label></div>
 <label>Bot message override<textarea name="message" maxlength="1800" placeholder="Inherit from account"></textarea></label>
 <label class="check"><input name="enabled" type="checkbox"> Target enabled</label>
-<p class="muted">Timing edits apply after the next scheduled run. Existing cooldown reservations are preserved.</p>
-<div class="suite-toolbar"><button type="submit">Save server</button><button type="button" data-close>Cancel</button></div><p class="form-error" role="alert"></p>
+<p class="muted">Timing edits preserve existing cooldown reservations. Use Reset timer from the scheduler card when you intentionally want to clear one.</p>
+<div class="suite-toolbar"><button type="submit" class="primary">Save server</button><button type="button" data-close>Cancel</button></div><p class="form-error" role="alert"></p>
 </form></dialog>
 
 <dialog id="settings-dialog"><form id="scheduler-settings-form">
 <h2>Scheduler settings</h2><p>Stop all accounts before changing settings.</p>
 <label class="check"><input name="enabled" type="checkbox"> Enable scheduler controls and automatic startup</label>
 <label class="check"><input name="dry_run" type="checkbox"> Simulation mode · no Discord requests</label>
-<p class="muted">Turning simulation off clears simulated timing reservations. Accounts stay stopped until you start them.</p>
+<p class="muted">Turning simulation off clears simulated timing reservations. Historical simulation counters remain until you clear stats.</p>
 <div class="suite-grid">
 <label>Gap between account start times (minutes)<input name="start_offset_min" type="number" min="0" max="1440" step="any" required></label>
 <label>Failures before disabling a target<input name="max_failures" type="number" min="1" max="100" required></label>
@@ -72,7 +119,7 @@
 <label>Delay before next server (minutes)<input name="default_account_cooldown_min" type="number" min="0" max="525600" step="any" required></label>
 <label>Random delay (minutes)<input name="default_random_offset_min" type="number" min="0" max="1440" step="any" required></label>
 </div><label>Default bot message<textarea name="default_message" maxlength="1800" required></textarea></label>
-<div class="suite-toolbar"><button type="submit">Save settings</button><button type="button" data-close>Cancel</button></div><p class="form-error" role="alert"></p>
+<div class="suite-toolbar"><button type="submit" class="primary">Save settings</button><button type="button" data-close>Cancel</button></div><p class="form-error" role="alert"></p>
 </form></dialog>
 {% endblock %}
 {% block scripts %}<script src="/static/scheduler.js"></script>{% endblock %}

@@ -17,11 +17,20 @@ class Runtime:
         self.directory = directory
         self.preferences = Preferences(directory / "scheduler-settings.json")
         self.store = AccountStore(directory / "accounts.json")
-        self.cooldowns = {False:CooldownBook(directory / "server-cooldowns.json"), True:CooldownBook(directory / "simulation-cooldowns.json")}
+        self.cooldowns = {
+            False: CooldownBook(directory / "server-cooldowns.json"),
+            True: CooldownBook(directory / "simulation-cooldowns.json"),
+        }
         self.catalog = {}
         self.events = deque(maxlen=300)
         self.lock = RLock()
-        self.scheduler = AutoScheduler(self.store, log_cb=self.log, preferences=self.preferences.get, cooldowns=self.cooldowns, target_status=self.target_status)
+        self.scheduler = AutoScheduler(
+            self.store,
+            log_cb=self.log,
+            preferences=self.preferences.get,
+            cooldowns=self.cooldowns,
+            target_status=self.target_status,
+        )
         self._lock_file = None
 
     def startup(self):
@@ -42,20 +51,18 @@ class Runtime:
             handle.close()
             raise RuntimeError("Another dashboard is using this scheduler data. Close it first.") from None
         self._lock_file = handle
-        # Upgrade existing per-account reservations into the shared server clock.
-        now=datetime.now(timezone.utc)
+
+        now = datetime.now(timezone.utc)
         for account in self.store.list():
             for target in account.servers:
-                if target.last_run_at and target.next_run_at and target.next_run_at>now:
-                    simulated=target.last_result=="simulated"
-                    self.cooldowns[simulated].ensure_later(target.guild_id,target.next_run_at)
+                if target.last_run_at and target.next_run_at and target.next_run_at > now:
+                    simulated = target.last_result == "simulated"
+                    self.cooldowns[simulated].ensure_later(target.guild_id, target.next_run_at)
         if self.preferences.get()["enabled"]:
             self.scheduler.start(auto_only=True)
 
     def shutdown(self):
         self.scheduler.stop_all()
-        # A request already in flight cannot be unsent. Keep the process lock
-        # until every worker exits so a second dashboard cannot race it.
         for account in self.store.list():
             self.scheduler.wait_stopped(account.account_id, timeout=None)
         if self._lock_file:
@@ -64,11 +71,19 @@ class Runtime:
 
     def log(self, level, message):
         with self.lock:
-            self.events.append({"time": datetime.now(timezone.utc).isoformat(), "level": level, "message": message})
+            self.events.append({
+                "time": datetime.now(timezone.utc).isoformat(),
+                "level": level,
+                "message": message,
+            })
+
+    def clear_events(self):
+        with self.lock:
+            self.events.clear()
 
     def require_idle(self, account_id):
         if not self.scheduler.wait_stopped(account_id, 0):
-            raise ValueError("Stop this account and wait for its current request to finish before editing.")
+            raise ValueError("Stop this account and wait for its current request to finish before editing or resetting.")
 
     def require_all_idle(self):
         for account in self.store.list():
@@ -83,10 +98,16 @@ class Runtime:
                 account["has_credential"] = credentials.has_credential(account["account_id"])
                 account["credential_storage"] = credentials.credential_status(account["account_id"])
                 for target in account["servers"]:
-                    known=self.catalog.get(target["guild_id"],{}) if target.get("follow_managed_channel") else {}
-                    target["effective_channel_id"]=known.get("channel_id") or target["channel_id"]
-                    target["setup_waiting"]=bool(target.get("follow_managed_channel") and not known.get("ready"))
-            return {"accounts": accounts, "settings": self.preferences.get(), "events": list(self.events)}
+                    known = self.catalog.get(target["guild_id"], {}) if target.get("follow_managed_channel") else {}
+                    target["effective_channel_id"] = known.get("channel_id") or target["channel_id"]
+                    target["setup_waiting"] = bool(
+                        target.get("follow_managed_channel") and not known.get("ready")
+                    )
+            return {
+                "accounts": accounts,
+                "settings": self.preferences.get(),
+                "events": list(self.events),
+            }
 
     def target_status(self, guild_id):
         with self.lock:
@@ -97,8 +118,8 @@ class Runtime:
             self.catalog = dict(catalog)
 
     def validate_targets(self, account):
-        ids=[s.guild_id for s in account.servers]
-        if len(ids)!=len(set(ids)):
+        ids = [s.guild_id for s in account.servers]
+        if len(ids) != len(set(ids)):
             raise ValueError("This server is already assigned to this account.")
 
     def save_settings(self, settings: SchedulerSettings):
@@ -112,10 +133,96 @@ class Runtime:
                     for server in account.servers:
                         if server.last_result in ("simulated", "simulated_shared_cooldown"):
                             server.next_run_at = None
-                    if account.servers and all(s.last_result in ("", "simulated", "simulated_shared_cooldown") for s in account.servers):
+                    if account.servers and all(
+                        s.last_result in ("", "simulated", "simulated_shared_cooldown")
+                        for s in account.servers
+                    ):
                         account.last_action_at = None
                     self.store.upsert(account)
             self.log("INFO", "Scheduler settings saved; accounts remain stopped until started.")
+
+    def _account_and_target(self, account_id, server_id=None):
+        account = self.store.get(account_id)
+        if account is None:
+            raise KeyError(account_id)
+        if server_id is None:
+            return account, None
+        target = next((s for s in account.servers if s.server_id == server_id), None)
+        if target is None:
+            raise KeyError(server_id)
+        return account, target
+
+    def _release_matching_reservation(self, target):
+        if not target.next_run_at:
+            return
+        for book in self.cooldowns.values():
+            book.release(target.guild_id, expected_until=target.next_run_at)
+
+    def reset_target_schedule(self, account_id, server_id):
+        with self.lock:
+            self.require_idle(account_id)
+            account, target = self._account_and_target(account_id, server_id)
+            self._release_matching_reservation(target)
+            account.last_action_at = None
+            target.next_run_at = None
+            target.last_error = ""
+            if target.last_result in (
+                "cancelled_before_send",
+                "waiting_shared_cooldown",
+                "simulated_shared_cooldown",
+                "waiting_for_setup",
+            ):
+                target.last_result = ""
+            self.store.upsert(account)
+            self.log("INFO", f"[{account.name}] Reset timer for {target.name}; target is eligible again.")
+
+    def reset_account_schedule(self, account_id):
+        with self.lock:
+            self.require_idle(account_id)
+            account, _ = self._account_and_target(account_id)
+            account.last_action_at = None
+            for target in account.servers:
+                self._release_matching_reservation(target)
+                target.next_run_at = None
+                target.last_error = ""
+                if target.last_result in (
+                    "cancelled_before_send",
+                    "waiting_shared_cooldown",
+                    "simulated_shared_cooldown",
+                    "waiting_for_setup",
+                ):
+                    target.last_result = ""
+            self.store.upsert(account)
+            self.log("INFO", f"[{account.name}] Reset all scheduler timers.")
+
+    def reset_target_stats(self, account_id, server_id):
+        with self.lock:
+            self.require_idle(account_id)
+            account, target = self._account_and_target(account_id, server_id)
+            target.total_runs = 0
+            target.total_ok = 0
+            target.total_fail = 0
+            target.total_sent = 0
+            target.total_simulated = 0
+            target.last_result = ""
+            target.last_error = ""
+            self.store.upsert(account)
+            self.log("INFO", f"[{account.name}] Cleared statistics for {target.name}.")
+
+    def reset_account_stats(self, account_id):
+        with self.lock:
+            self.require_idle(account_id)
+            account, _ = self._account_and_target(account_id)
+            for target in account.servers:
+                target.total_runs = 0
+                target.total_ok = 0
+                target.total_fail = 0
+                target.total_sent = 0
+                target.total_simulated = 0
+                target.last_result = ""
+                target.last_error = ""
+            self.store.upsert(account)
+            self.log("INFO", f"[{account.name}] Cleared scheduler statistics.")
 
     def action(self, account_id, action):
         with self.lock:
